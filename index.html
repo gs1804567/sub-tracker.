@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SubTracker</title>
+    <style>
+        :root { --primary: #2563eb; --bg: #f8fafc; --card: #ffffff; }
+        body { font-family: system-ui, sans-serif; background: var(--bg); margin: 0; padding: 20px; color: #1e293b; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .card { background: var(--card); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); margin-bottom: 20px; }
+        h2 { margin-top: 0; font-size: 1.25rem; }
+        .input-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        input, select, button { padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; }
+        input[type="text"] { grid-column: span 2; }
+        button { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: 600; grid-column: span 2; }
+        button:hover { background: #1d4ed8; }
+        .summary { display: flex; justify-content: space-between; font-weight: bold; border-top: 2px solid #e2e8f0; pt: 15px; }
+        .sub-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f1f5f9; align-items: center; }
+        .sub-info { font-size: 0.9rem; color: #64748b; }
+        .delete-btn { color: #ef4444; cursor: pointer; font-size: 0.8rem; margin-left: 10px; border: 1px solid #ef4444; padding: 2px 6px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="card">
+        <h2>Add Subscription</h2>
+        <div class="input-group">
+            <input type="text" id="name" placeholder="Service Name (e.g. Netflix)">
+            <input type="number" id="cost" placeholder="Cost ($)">
+            <input type="date" id="date">
+            <select id="cycle">
+                <option value="1">Monthly</option>
+                <option value="12">Yearly</option>
+            </select>
+            <button onclick="addSubscription()">Add Subscription</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Total Monthly: <span id="total-monthly">$0.00</span></h2>
+        <div id="sub-list"></div>
+    </div>
+</div>
+
+<script>
+    let subs = JSON.parse(localStorage.getItem('mySubs')) || [];
+
+    function addSubscription() {
+        const name = document.getElementById('name').value;
+        const cost = parseFloat(document.getElementById('cost').value);
+        const date = document.getElementById('date').value;
+        const cycle = parseInt(document.getElementById('cycle').value);
+
+        if (!name || !cost || !date) return alert("Please fill all fields");
+
+        subs.push({ id: Date.now(), name, cost, date, cycle });
+        saveAndRender();
+        
+        // Clear inputs
+        document.getElementById('name').value = '';
+        document.getElementById('cost').value = '';
+    }
+
+    function deleteSub(id) {
+        subs = subs.filter(s => s.id !== id);
+        saveAndRender();
+    }
+
+    function saveAndRender() {
+        localStorage.setItem('mySubs', JSON.stringify(subs));
+        const list = document.getElementById('sub-list');
+        const totalEl = document.getElementById('total-monthly');
+        
+        list.innerHTML = '';
+        let total = 0;
+
+        subs.sort((a, b) => new Date(a.date) - new Date(b.date)).forEach(sub => {
+            const monthlyCost = sub.cost / sub.cycle;
+            total += monthlyCost;
+
+            list.innerHTML += `
+                <div class="sub-item">
+                    <div>
+                        <strong>${sub.name}</strong><br>
+                        <span class="sub-info">Due: ${sub.date} ($${sub.cost})</span>
+                    </div>
+                    <div>
+                        $${monthlyCost.toFixed(2)}/mo
+                        <span class="delete-btn" onclick="deleteSub(${sub.id})">Delete</span>
+                    </div>
+                </div>
+            `;
+        });
+
+        totalEl.innerText = `$${total.toFixed(2)}`;
+    }
+
+    saveAndRender();
+</script>
+
+</body>
+</html>
