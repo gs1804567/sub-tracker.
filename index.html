@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SubTracker + Chart</title>
+    <title>SubTracker Pro</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        :root { --primary: #2563eb; --bg: #f8fafc; --card: #ffffff; }
+        :root { --primary: #2563eb; --bg: #f8fafc; --card: #ffffff; --secondary: #64748b; }
         body { font-family: system-ui, sans-serif; background: var(--bg); margin: 0; padding: 20px; color: #1e293b; }
         .container { max-width: 600px; margin: 0 auto; }
         .card { background: var(--card); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); margin-bottom: 20px; }
@@ -14,9 +14,12 @@
         input, select, button { padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; }
         input[type="text"] { grid-column: span 2; }
         button { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: 600; grid-column: span 2; }
+        .btn-alt { background: var(--secondary); margin-top: 10px; font-size: 0.8rem; padding: 8px; }
         .sub-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
         .delete-btn { color: #ef4444; cursor: pointer; font-size: 0.8rem; margin-left: 10px; }
         canvas { max-width: 100%; margin-top: 20px; }
+        .backup-controls { display: flex; gap: 10px; margin-top: 20px; border-top: 1px solid #e2e8f0; pt: 15px; }
+        #file-input { display: none; }
     </style>
 </head>
 <body>
@@ -25,7 +28,7 @@
     <div class="card">
         <h2>Add Subscription</h2>
         <div class="input-group">
-            <input type="text" id="name" placeholder="Service Name">
+            <input type="text" id="name" placeholder="Service Name (e.g. Adobe)">
             <input type="number" id="cost" placeholder="Cost">
             <input type="date" id="date">
             <select id="cycle">
@@ -37,13 +40,19 @@
     </div>
 
     <div class="card">
-        <h2>Expense Breakdown (Monthly)</h2>
+        <h2>Expense Breakdown</h2>
         <canvas id="myChart"></canvas>
     </div>
 
     <div class="card">
         <h2>Total Monthly: <span id="total-monthly">$0.00</span></h2>
         <div id="sub-list"></div>
+
+        <div class="backup-controls">
+            <button class="btn-alt" onclick="exportData()">Download Backup</button>
+            <button class="btn-alt" onclick="document.getElementById('file-input').click()">Upload Backup</button>
+            <input type="file" id="file-input" onchange="importData(event)">
+        </div>
     </div>
 </div>
 
@@ -56,9 +65,7 @@
         const cost = parseFloat(document.getElementById('cost').value);
         const date = document.getElementById('date').value;
         const cycle = parseInt(document.getElementById('cycle').value);
-
         if (!name || isNaN(cost) || !date) return alert("Please fill all fields");
-
         subs.push({ id: Date.now(), name, cost, date, cycle });
         saveAndRender();
         document.getElementById('name').value = '';
@@ -66,24 +73,53 @@
     }
 
     function deleteSub(id) {
-        subs = subs.filter(s => s.id !== id);
-        saveAndRender();
+        if(confirm("Delete this subscription?")) {
+            subs = subs.filter(s => s.id !== id);
+            saveAndRender();
+        }
+    }
+
+    // --- NEW: Export Function ---
+    function exportData() {
+        const dataStr = JSON.stringify(subs);
+        const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+        const exportFileDefaultName = 'subscriptions_backup.json';
+        const linkElement = document.createElement('a');
+        linkElement.setAttribute('href', dataUri);
+        linkElement.setAttribute('download', exportFileDefaultName);
+        linkElement.click();
+    }
+
+    // --- NEW: Import Function ---
+    function importData(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const importedSubs = JSON.parse(e.target.result);
+                if (Array.isArray(importedSubs)) {
+                    subs = importedSubs;
+                    saveAndRender();
+                    alert("Import Successful!");
+                }
+            } catch (err) {
+                alert("Invalid File Format");
+            }
+        };
+        reader.readAsText(file);
     }
 
     function updateChart(labels, data) {
         const ctx = document.getElementById('myChart').getContext('2d');
-        
         if (myChart) { myChart.destroy(); }
-
         myChart = new Chart(ctx, {
             type: 'pie',
             data: {
                 labels: labels,
                 datasets: [{
                     data: data,
-                    backgroundColor: [
-                        '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'
-                    ]
+                    backgroundColor: ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316']
                 }]
             },
             options: { responsive: true }
@@ -94,7 +130,6 @@
         localStorage.setItem('mySubs', JSON.stringify(subs));
         const list = document.getElementById('sub-list');
         const totalEl = document.getElementById('total-monthly');
-        
         list.innerHTML = '';
         let total = 0;
         let chartLabels = [];
@@ -103,28 +138,17 @@
         subs.sort((a, b) => new Date(a.date) - new Date(b.date)).forEach(sub => {
             const monthlyCost = sub.cost / sub.cycle;
             total += monthlyCost;
-            
             chartLabels.push(sub.name);
             chartData.push(monthlyCost.toFixed(2));
-
             list.innerHTML += `
                 <div class="sub-item">
-                    <div>
-                        <strong>${sub.name}</strong><br>
-                        <small>Due: ${sub.date}</small>
-                    </div>
-                    <div>
-                        $${monthlyCost.toFixed(2)}/mo
-                        <span class="delete-btn" onclick="deleteSub(${sub.id})">Delete</span>
-                    </div>
-                </div>
-            `;
+                    <div><strong>${sub.name}</strong><br><small>Due: ${sub.date}</small></div>
+                    <div>$${monthlyCost.toFixed(2)}/mo<span class="delete-btn" onclick="deleteSub(${sub.id})">🗑️</span></div>
+                </div>`;
         });
-
         totalEl.innerText = `$${total.toFixed(2)}`;
         updateChart(chartLabels, chartData);
     }
-
     saveAndRender();
 </script>
 </body>
