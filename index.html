@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SubTracker Pro</title>
+    <title>SubTracker Pro + %</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
     <style>
         :root { --primary: #2563eb; --bg: #f8fafc; --card: #ffffff; --secondary: #64748b; }
         body { font-family: system-ui, sans-serif; background: var(--bg); margin: 0; padding: 20px; color: #1e293b; }
@@ -15,10 +16,10 @@
         input[type="text"] { grid-column: span 2; }
         button { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: 600; grid-column: span 2; }
         .btn-alt { background: var(--secondary); margin-top: 10px; font-size: 0.8rem; padding: 8px; }
-        .sub-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
-        .delete-btn { color: #ef4444; cursor: pointer; font-size: 0.8rem; margin-left: 10px; }
-        canvas { max-width: 100%; margin-top: 20px; }
-        .backup-controls { display: flex; gap: 10px; margin-top: 20px; border-top: 1px solid #e2e8f0; pt: 15px; }
+        .sub-item { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f1f5f9; align-items: center; }
+        .delete-btn { color: #ef4444; cursor: pointer; font-size: 1.2rem; margin-left: 10px; text-decoration: none; }
+        canvas { max-width: 100%; margin: 20px 0; }
+        .backup-controls { display: flex; gap: 10px; margin-top: 20px; border-top: 1px solid #e2e8f0; padding-top: 15px; }
         #file-input { display: none; }
     </style>
 </head>
@@ -28,8 +29,8 @@
     <div class="card">
         <h2>Add Subscription</h2>
         <div class="input-group">
-            <input type="text" id="name" placeholder="Service Name (e.g. Adobe)">
-            <input type="number" id="cost" placeholder="Cost">
+            <input type="text" id="name" placeholder="Service Name (e.g. Netflix)">
+            <input type="number" id="cost" placeholder="Cost (NT$)">
             <input type="date" id="date">
             <select id="cycle">
                 <option value="1">Monthly</option>
@@ -40,7 +41,7 @@
     </div>
 
     <div class="card">
-        <h2>Expense Breakdown</h2>
+        <h2>Monthly Spending Breakdown (%)</h2>
         <canvas id="myChart"></canvas>
     </div>
 
@@ -57,6 +58,9 @@
 </div>
 
 <script>
+    // Register the percentage label plugin
+    Chart.register(ChartDataLabels);
+
     let subs = JSON.parse(localStorage.getItem('mySubs')) || [];
     let myChart = null;
 
@@ -79,40 +83,10 @@
         }
     }
 
-    // --- NEW: Export Function ---
-    function exportData() {
-        const dataStr = JSON.stringify(subs);
-        const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-        const exportFileDefaultName = 'subscriptions_backup.json';
-        const linkElement = document.createElement('a');
-        linkElement.setAttribute('href', dataUri);
-        linkElement.setAttribute('download', exportFileDefaultName);
-        linkElement.click();
-    }
-
-    // --- NEW: Import Function ---
-    function importData(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            try {
-                const importedSubs = JSON.parse(e.target.result);
-                if (Array.isArray(importedSubs)) {
-                    subs = importedSubs;
-                    saveAndRender();
-                    alert("Import Successful!");
-                }
-            } catch (err) {
-                alert("Invalid File Format");
-            }
-        };
-        reader.readAsText(file);
-    }
-
     function updateChart(labels, data) {
         const ctx = document.getElementById('myChart').getContext('2d');
         if (myChart) { myChart.destroy(); }
+        
         myChart = new Chart(ctx, {
             type: 'pie',
             data: {
@@ -122,7 +96,23 @@
                     backgroundColor: ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316']
                 }]
             },
-            options: { responsive: true }
+            options: {
+                responsive: true,
+                plugins: {
+                    datalabels: {
+                        color: '#fff',
+                        font: { weight: 'bold', size: 14 },
+                        formatter: (value, ctx) => {
+                            let sum = 0;
+                            let dataArr = ctx.chart.data.datasets[0].data;
+                            dataArr.map(data => { sum += parseFloat(data); });
+                            let percentage = (value * 100 / sum).toFixed(1) + "%";
+                            return percentage;
+                        }
+                    },
+                    legend: { position: 'bottom' }
+                }
+            }
         });
     }
 
@@ -142,13 +132,37 @@
             chartData.push(monthlyCost.toFixed(2));
             list.innerHTML += `
                 <div class="sub-item">
-                    <div><strong>${sub.name}</strong><br><small>Due: ${sub.date}</small></div>
-                    <div>$${monthlyCost.toFixed(2)}/mo<span class="delete-btn" onclick="deleteSub(${sub.id})">🗑️</span></div>
+                    <div><strong>${sub.name}</strong><br><small>Next: ${sub.date}</small></div>
+                    <div>$${monthlyCost.toFixed(2)}/mo<span class="delete-btn" onclick="deleteSub(${sub.id})"> ×</span></div>
                 </div>`;
         });
         totalEl.innerText = `$${total.toFixed(2)}`;
         updateChart(chartLabels, chartData);
     }
+
+    // Export/Import logic remains the same
+    function exportData() {
+        const dataStr = JSON.stringify(subs);
+        const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+        const linkElement = document.createElement('a');
+        linkElement.setAttribute('href', dataUri);
+        linkElement.setAttribute('download', 'subs_backup.json');
+        linkElement.click();
+    }
+
+    function importData(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                subs = JSON.parse(e.target.result);
+                saveAndRender();
+            } catch (err) { alert("Invalid file"); }
+        };
+        reader.readAsText(file);
+    }
+
     saveAndRender();
 </script>
 </body>
